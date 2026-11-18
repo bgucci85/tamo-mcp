@@ -46,6 +46,21 @@ export const createServer = (tamo: TamoClient): McpServer => {
   const server = new McpServer({ name: "tamo-dienynas", version: "0.1.0" }, { instructions });
 
   server.registerTool(
+    "get_selected_role",
+    {
+      title: "Selected student and school",
+      description:
+        "The TAMO role this server reads: the student's name and the role's title and subtitle (which name the child and the school). Call it to confirm the right child and school before relying on other results.",
+      inputSchema: {},
+      annotations: readOnly,
+    },
+    guard(async () => {
+      const session = await tamo.currentSession();
+      return { loginName: session.studentName, roleTitle: session.roleTitle, roleSubtitle: session.roleSubtitle, rolesOnAccount: session.roleCount };
+    }),
+  );
+
+  server.registerTool(
     "get_schedule",
     {
       title: "Weekly schedule",
@@ -101,7 +116,8 @@ export const createServer = (tamo: TamoClient): McpServer => {
       const window = range(from, to, -14, 21, 62);
       const items = mapWork(await tamo.modern("core/app/darbai", { dateFrom: window.from, dateTo: window.to, workType: "home" }));
       const filtered = items.filter((item) => !status || status === "all" || (status === "done") === Boolean(item.done));
-      return { ...window, homework: filtered.sort((a, b) => (a.due ?? "").localeCompare(b.due ?? "")) };
+      const session = await tamo.currentSession();
+      return { role: { title: session.roleTitle, subtitle: session.roleSubtitle }, ...window, homework: filtered.sort((a, b) => (a.due ?? "").localeCompare(b.due ?? "")) };
     }),
   );
 

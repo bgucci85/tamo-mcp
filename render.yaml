@@ -9,6 +9,8 @@ services:
         sync: false
       - key: TAMO_PASSWORD
         sync: false
+      - key: TAMO_ROLE
+        sync: false
       - key: MCP_TOKEN
         generateValue: true
       - key: MCP_PATH_TOKEN

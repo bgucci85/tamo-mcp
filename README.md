@@ -2,6 +2,13 @@
 
 **English** · [Lietuviškai](README.lt.md)
 
+> [!NOTE]
+> **Private copy.** Based on upstream commit `c5048f4` (sobakintech/tamo-dienynas-mcp), reviewed before use. Changes:
+> - `TAMO_ROLE` takes several terms joined with `+` (e.g. `Amanda+Daukanto`); a role is used only when exactly one role contains every term. With several roles and no `TAMO_ROLE`, or an ambiguous one, the server refuses and lists the roles instead of guessing.
+> - New `get_selected_role` tool, and `get_homework` returns the role it read, so every result can be checked against the intended child and school.
+> - Removed the image-publishing workflow and the upstream image reference; deploy only from this repository.
+> - Pull upstream changes only after reviewing them.
+
 Connect your AI assistant (Claude, ChatGPT and others) to the **TAMO dienynas** Lithuanian school e-diary. Once it's set up you can ask things like:
 
 - "What homework is due tomorrow, and what haven't I done yet?"
@@ -83,7 +90,7 @@ npm start
 | `TAMO_USERNAME`, `TAMO_PASSWORD` | yes | The student's TAMO login |
 | `MCP_TOKEN` | yes | Bearer token for clients that send headers, on `/mcp` |
 | `MCP_PATH_TOKEN` | yes | Secret path for clients that only take a URL, on `/<MCP_PATH_TOKEN>/mcp` |
-| `TAMO_ROLE` | no | Part of the role title to use if the account has several roles (e.g. a parent with two children) |
+| `TAMO_ROLE` | if several roles | Terms joined with `+` that together match exactly one role's title/subtitle, e.g. `Amanda+Daukanto` |
 | `PORT` | no | Default `8000` |
 | `MAX_TAMO_REQUESTS_PER_MINUTE` | no | Default `30` |
 

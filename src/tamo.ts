@@ -26,6 +26,8 @@ export interface Session {
   legacyRole: number;
   roleId: string;
   roleCount: number;
+  roleTitle: string;
+  roleSubtitle: string;
   studentName: string;
 }
 
@@ -53,6 +55,33 @@ const checkEnvelope = (payload: JsonObject, legacy: boolean) => {
   } else if (payload.isSuccess !== true) {
     throw new TamoError("TAMO could not return this data");
   }
+};
+
+const describeRole = (role: JsonObject) => [str(role, "title"), str(role, "subtitle")].filter(Boolean).join(" / ");
+
+// Role ids change on every roles request, so the role is chosen by its stable title and subtitle instead.
+// TAMO_ROLE holds one or more terms joined with "+" (e.g. "Amanda+Daukanto"); a role is chosen only when
+// exactly one role contains every term, so a vague setting fails loudly instead of reading the wrong child or school.
+export const pickRole = (roles: JsonObject[], setting: string | undefined): JsonObject => {
+  if (roles.length === 0) throw new TamoError("This TAMO account has no school roles");
+  const available = roles.map(describeRole).join("; ");
+  const terms = (setting ?? "")
+    .split("+")
+    .map((term) => term.trim().toLowerCase())
+    .filter(Boolean);
+  if (terms.length === 0) {
+    if (roles.length === 1) return roles[0]!;
+    throw new TamoError(`This TAMO account has ${roles.length} roles; set TAMO_ROLE to pick one. Available roles: ${available}`);
+  }
+  const matches = roles.filter((role) => {
+    const text = describeRole(role).toLowerCase();
+    return terms.every((term) => text.includes(term));
+  });
+  if (matches.length === 0) throw new TamoError(`No TAMO role matches TAMO_ROLE "${setting}". Available roles: ${available}`);
+  if (matches.length > 1) {
+    throw new TamoError(`TAMO_ROLE "${setting}" matches ${matches.length} roles (${matches.map(describeRole).join("; ")}); add a term joined with "+"`);
+  }
+  return matches[0]!;
 };
 
 export class TamoClient {
@@ -115,25 +144,13 @@ export class TamoClient {
       studentName: `${str(auth, "firstName")} ${str(auth, "lastName")}`.trim(),
     };
 
-    await this.request("core/app/settings/StyleRef", {}, { ...base, roleId: "", roleCount: 0 });
-    const roles = requiredList(await this.request("core/app/roles", {}, { ...base, roleId: "", roleCount: 0 }), "roles");
-    const role = this.pickRole(roles);
+    const noRole = { ...base, roleId: "", roleCount: 0, roleTitle: "", roleSubtitle: "" };
+    await this.request("core/app/settings/StyleRef", {}, noRole);
+    const roles = requiredList(await this.request("core/app/roles", {}, noRole), "roles");
+    const role = pickRole(roles, this.config.roleTitle);
     const roleId = str(role, "id");
     if (!validHeader(roleId)) throw new TamoError("TAMO returned an unusable role");
-    return { ...base, roleId, roleCount: roles.length };
-  }
-
-  // Role ids change on every roles request, so the role is chosen by its stable title instead.
-  private pickRole(roles: JsonObject[]): JsonObject {
-    if (roles.length === 0) throw new TamoError("This TAMO account has no school roles");
-    const wanted = this.config.roleTitle?.trim().toLowerCase();
-    if (wanted) {
-      const match = roles.find((role) => [str(role, "title"), str(role, "subtitle")].some((text) => text.toLowerCase().includes(wanted)));
-      if (!match) throw new TamoError(`No TAMO role matches TAMO_ROLE "${this.config.roleTitle}"`);
-      return match;
-    }
-    if (roles.length === 1) return roles[0]!;
-    return roles.find((role) => role.active === true) ?? roles[0]!;
+    return { ...base, roleId, roleCount: roles.length, roleTitle: str(role, "title"), roleSubtitle: str(role, "subtitle") };
   }
 
   private throttle() {

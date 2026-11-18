@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
-import { TamoClient } from "../src/tamo.js";
+import { pickRole, TamoClient } from "../src/tamo.js";
 import { createServer } from "../src/tools.js";
 
 interface Call {
@@ -67,7 +67,7 @@ test("lists only read-only tools", async () => {
   const { tools } = await client.listTools();
   assert.deepEqual(
     tools.map((tool) => tool.name).sort(),
-    ["get_classwork", "get_grades", "get_homework", "get_notifications", "get_schedule", "get_school_calendar", "get_semester_grades", "list_messages"],
+    ["get_classwork", "get_grades", "get_homework", "get_notifications", "get_schedule", "get_school_calendar", "get_selected_role", "get_semester_grades", "list_messages"],
   );
   assert.ok(tools.every((tool) => tool.annotations?.readOnlyHint === true));
 });
@@ -125,4 +125,34 @@ test("throttles bursts of TAMO requests", async () => {
   const result = await client.callTool({ name: "get_notifications", arguments: {} });
   assert.equal(result.isError, true);
   assert.match(textOf(result), /Too many TAMO requests/);
+});
+
+const family = [
+  { id: "1", title: "Amanda Meyer", subtitle: "Vilniaus Simono Daukanto progimnazija" },
+  { id: "2", title: "Amanda Meyer", subtitle: "Algirdo muzikos mokykla" },
+  { id: "3", title: "Melissa Meyer", subtitle: "Vilniaus Simono Daukanto progimnazija" },
+  { id: "4", title: "Melissa Meyer", subtitle: "Algirdo muzikos mokykla", active: true },
+];
+
+test("picks the one role that contains every TAMO_ROLE term", () => {
+  assert.equal(pickRole(family, "Amanda+Daukanto").id, "1");
+  assert.equal(pickRole(family, " amanda + DAUKANTO ").id, "1");
+  assert.equal(pickRole(family, "Melissa+muzikos").id, "4");
+});
+
+test("refuses to guess between several roles", () => {
+  assert.throws(() => pickRole(family, undefined), /4 roles; set TAMO_ROLE/);
+  assert.throws(() => pickRole(family, "Amanda"), /matches 2 roles/);
+  assert.throws(() => pickRole(family, "Daukanto"), /matches 2 roles/);
+  assert.throws(() => pickRole(family, "Amanda+Gimnazija X"), /No TAMO role matches/);
+  assert.equal(pickRole([family[0]!], undefined).id, "1");
+});
+
+test("reports the selected role with homework", async () => {
+  fakeTamo({ "core/app/roles": () => respond({ isSuccess: true, roles: family }) });
+  const client = await connect(new TamoClient({ ...config, roleTitle: "Amanda+Daukanto" }));
+  const role = JSON.parse(textOf(await client.callTool({ name: "get_selected_role", arguments: {} })));
+  assert.equal(role.roleSubtitle, "Vilniaus Simono Daukanto progimnazija");
+  const homework = JSON.parse(textOf(await client.callTool({ name: "get_homework", arguments: { from: "2026-09-01", to: "2026-09-30" } })));
+  assert.deepEqual(homework.role, { title: "Amanda Meyer", subtitle: "Vilniaus Simono Daukanto progimnazija" });
 });
